@@ -6,6 +6,7 @@ const passport = require("passport");
 const LocalStrategy = require("passport-local").Strategy;
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
+const bcrypt = require('bcryptjs');
 require('dotenv').config()
 
 const mongoDb = process.env.MONGODB_URI;
@@ -29,16 +30,22 @@ app.set("view engine", "ejs");
 app.use(session({ secret: "cats", resave: false, saveUninitialized: true }));
 
 passport.use(
+    // LocalStrategy is the common username-password strategy for auth
     new LocalStrategy(async(username, password, done) => {
       try {
         const user = await User.findOne({ username: username });
         if (!user) {
           return done(null, false, { message: "Incorrect username" });
         };
-        if (user.password !== password) {
-          return done(null, false, { message: "Incorrect password" });
-        };
-        return done(null, user);
+        bcrypt.compare(password, user.password, (err, res)=> {
+            if (res){
+                // passwords match, log user in
+                return done(null, user)
+            } else {
+                // passwords to not match
+                return done(null, false, {message: "Incorrrect Password"})
+            }
+        })
       } catch(err) {
         return done(err);
       };
@@ -59,14 +66,6 @@ passport.use(
   });
 
 
-
-
-
-
-
-
-
-
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.urlencoded({ extended: false }));
@@ -83,16 +82,18 @@ app.get("/", (req, res) => {
 app.get("/sign-up", (req, res) => res.render("sign_up_form"));
 
 app.post("/sign-up", async (req, res, next) => {
-    try {
-      const user = new User({
-        username: req.body.username,
-        password: req.body.password
-      });
-      const result = await user.save();
-      res.redirect("/");
-    } catch(err) {
-      return next(err);
-    };
+    bcrypt.hash(req.body.password, 10, async (err, hashedPassword) => {
+    if (err) {
+        return next(err);
+    } else {
+        const user = new User({
+            username: req.body.username,
+            password: hashedPassword
+        });
+        const result = await user.save();
+        res.redirect("/");
+    }
+    })
   });
 
 app.post(
